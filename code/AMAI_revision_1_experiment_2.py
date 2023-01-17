@@ -1,10 +1,10 @@
-from experiment_utils import (VennAbers, ece)
+from experiment_utils import (VennAbers, ece, clip, lime_fidelity, debug_print)
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.metrics import (brier_score_loss, log_loss)
+from sklearn.metrics import log_loss
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import StratifiedKFold
 from sklearn.calibration import calibration_curve
@@ -13,66 +13,12 @@ from sklearn.calibration import CalibratedClassifierCV
 import time
 import pickle
 
-
-def clip(val, min_=0, max_=1):
-    if len(val) == 1:
-        return min_ if val < min_ else max_ if val > max_ else val
-    return [min_ if v < min_ else max_ if v > max_ else v for v in val]
-
-def find_bin(rules, rule):
-    return rules.index(rule)
-
-def lime_fidelity(exp, explainer, model, instance, feature=None):
-    if feature is None:
-        fidelity = np.zeros(len(instance))
-        res = {'p_one':[], 'weight':[], 'pw':[]}
-        for i in range(len(instance)):
-            fidelity[i], tmp = lime_fidelity(exp, explainer, model, instance.copy(), i)
-            for m in ['p_one','weight','pw']:
-                res[m].append(tmp[m])
-        return fidelity, res
-    feature_idx = exp.local_exp[1][feature][0]
-    bin = find_bin(explainer.discretizer.names[feature_idx], exp.as_list()[feature][0])
-    pred = exp.predict_proba[1]
-    #non_foul = np.delete(explainer.categorical_names[odor_idx], foul_idx)
-    normalized_frequencies = explainer.feature_frequencies[feature_idx].copy()
-    if len(normalized_frequencies) > 3:
-        normalized_frequencies[bin] = 0
-        normalized_frequencies /= normalized_frequencies.sum()
-    elif len(normalized_frequencies) > 1:
-        if bin == len(normalized_frequencies):
-            bin -= 1 # if the rule is X > Y when fewer than four bins, then it always correspond to the last of the bins.
-        normalized_frequencies[bin] = 0
-        normalized_frequencies /= normalized_frequencies.sum()
-
-    average_pone=0
-    weight = exp.local_exp[1][feature][1]
-    for j in range(len(normalized_frequencies)):
-        instance[feature_idx]=explainer.discretizer.means[feature_idx][j]
-        p_one = model.predict_proba(instance.reshape(1, -1))[0,1]
-        average_pone += p_one * normalized_frequencies[j]
-    #     print('P(one | x=%f): %.2f' % (explainer.discretizer.means[feature_idx][j], p_one))
-    # print ('P(one) = %.2f' % average_pone)
-    
-    # print ('Err: Pred - avgPreds - weight = %.2f - %.2f - %.2f = %.2f' % (pred, average_pone, weight, pred - average_pone - weight))
-    return 1 - (pred - average_pone - weight), {'p_one':average_pone, 'weight':weight, 'pw':average_pone + weight}
-
-def debug_print(message, debug=True):
-    if debug:
-        print(message)
-
-num_attr = 2 # attribut att ta fram regler för
-outerloop = 1 # antal upprepningar
-k=10 # Antal foldar
-divider = 1 #M 
+outerloop = 1 # number of repetitions
+k=10 # number of folds
 number_of_bins = 10
 plot_to_file = True
-instance_to_file = False
 eval_matrix = []
-import sys
-original_stdout = sys.stdout
 is_debug = True
-use_lime = True
 
 descriptors = ['uncal','platt','va',] 
 Descriptors = {'uncal':'Uncal','platt': 'Platt','va': 'VA'}
@@ -241,16 +187,14 @@ for dataset in datasets.keys():
             for calib in descriptors:                              
                 idx = 0
                 fop, mpv = calibration_curve(results['yall'], clip(np.nanmean(explanations[calib][explain]['proba_exp'],axis=1)), n_bins=number_of_bins)
-                eval_matrix.append([dataSet, alg,'Brier', explain, '', '', calib, brier_score_loss(results['yall'], clip(np.nanmean(explanations[calib][explain]['proba_exp'],axis=1)))])
-                eval_matrix.append([dataSet, alg,'Log', explain, '', '', calib, log_loss(results['yall'], clip(np.nanmean(explanations[calib][explain]['proba_exp'],axis=1)))])
-                eval_matrix.append([dataSet, alg,'ECE', explain, '', '', calib, ece(results['yall'], clip(np.nanmean(explanations[calib][explain]['proba_exp'],axis=1)), fop, mpv)])
+                eval_matrix.append([dataSet, alg,'Log', 'All', calib, log_loss(results['yall'], clip(np.nanmean(explanations[calib][explain]['proba_exp'],axis=1)))])
+                eval_matrix.append([dataSet, alg,'ECE', 'All', calib, ece(results['yall'], clip(np.nanmean(explanations[calib][explain]['proba_exp'],axis=1)), fop, mpv)])
                 fop, mpv = calibration_curve(results['yall'], clip([explanations[calib][explain]['proba_exp'][i][0] for i in range(no_of_instances)]), n_bins=number_of_bins)
-                eval_matrix.append([dataSet, alg,'Brier', explain, '', 1, calib, brier_score_loss(results['yall'], clip([explanations[calib][explain]['proba_exp'][i][0] for i in range(no_of_instances)]))])
-                eval_matrix.append([dataSet, alg,'Log', explain, '', 1, calib, log_loss(results['yall'], clip([explanations[calib][explain]['proba_exp'][i][0] for i in range(no_of_instances)]))])
-                eval_matrix.append([dataSet, alg,'ECE', explain, '', 1, calib, ece(results['yall'], clip([explanations[calib][explain]['proba_exp'][i][0] for i in range(no_of_instances)]), fop, mpv)])
+                eval_matrix.append([dataSet, alg,'Log', 'Top', calib, log_loss(results['yall'], clip([explanations[calib][explain]['proba_exp'][i][0] for i in range(no_of_instances)]))])
+                eval_matrix.append([dataSet, alg,'ECE', 'Top', calib, ece(results['yall'], clip([explanations[calib][explain]['proba_exp'][i][0] for i in range(no_of_instances)]), fop, mpv)])
                 
-        evaluation_matrix = pd.DataFrame(data=eval_matrix, columns=['DataSet', 'Algorithm', 'Metric', 'Explainer', 'Type', 'NumFeatures', 'Comparison','Value'])
-        evaluation_matrix.to_csv('AMAI_Revision_1_experiment_2.csv', index=True, header=True, sep=';')
+        evaluation_matrix = pd.DataFrame(data=eval_matrix, columns=['DataSet', 'Algorithm', 'Metric', 'NumFeatures', 'Comparison','Value'])
+        evaluation_matrix.to_csv('results/AMAI_Revision_1_experiment_2.csv', index=True, header=True, sep=';')
         toc_algorithm = time.time()
         debug_print(dataSet + "-" + alg,is_debug )
 

@@ -1,4 +1,4 @@
-from experiment_util import (VennAbers, ece)
+from experiment_utils import (VennAbers, ece, debug_print)
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -11,20 +11,12 @@ from sklearn.calibration import calibration_curve
 from matplotlib import pyplot as plt
 from sklearn.calibration import CalibratedClassifierCV
 import time
-import sys
 
-def debug_print(message, debug=True):
-    if debug:
-        print(message)
-
-num_attr = 2 # attribut att ta fram regler för
-outerloop = 1 # antal upprepningar
-k=2 # Antal foldar
-divider = 1 #M 
+outerloop = 1 # number of repetitions
+k=10 # number of folds
 number_of_bins = 10
 plot_to_file = True
 eval_matrix = []
-original_stdout = sys.stdout
 is_debug = True
 result_metrics = ['proba','preds',]
 
@@ -171,7 +163,7 @@ for dataset in datasets.keys():
             eval_matrix.append([dataSet, alg,'ECE', '',desc, ece(results['yall'], results[desc]['prob1'], results[desc]['fop'], results[desc]['mpv'])])
             
         evaluation_matrix = pd.DataFrame(data=eval_matrix, columns=['DataSet', 'Algorithm', 'Metric', 'Explainer', 'Criteria', 'Value'])
-        evaluation_matrix.to_csv('AMAI revision 1 experiment 1.csv', index=True, header=True, sep=';')
+        evaluation_matrix.to_csv('results/AMAI revision 1 experiment 1.csv', index=True, header=True, sep=';')
         toc_algorithm = time.time()
         debug_print(dataSet + "-" + alg + ': ' +str(toc_algorithm-tic_algorithm),is_debug )
 

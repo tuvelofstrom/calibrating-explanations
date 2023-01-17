@@ -1,8 +1,6 @@
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
 
-
-
 def bin_total(y_true, y_prob, n_bins):
     bins = np.linspace(0., 1. + 1e-8, n_bins + 1)
     # In sklearn.calibration.calibration_curve,
@@ -73,3 +71,53 @@ class VennAbers:
     def predict_proba_high(self, test_X):
         l, h, vap, va_proba, ll1, hh1 = self.predict_proba_all(test_X)
         return np.asarray(hh1)
+
+        
+
+
+def clip(val, min_=0, max_=1):
+    if len(val) == 1:
+        return min_ if val < min_ else max_ if val > max_ else val
+    return [min_ if v < min_ else max_ if v > max_ else v for v in val]
+
+def find_bin(rules, rule):
+    return rules.index(rule)
+
+def lime_fidelity(exp, explainer, model, instance, feature=None):
+    if feature is None:
+        fidelity = np.zeros(len(instance))
+        res = {'p_one':[], 'weight':[], 'pw':[]}
+        for i in range(len(instance)):
+            fidelity[i], tmp = lime_fidelity(exp, explainer, model, instance.copy(), i)
+            for m in ['p_one','weight','pw']:
+                res[m].append(tmp[m])
+        return fidelity, res
+    feature_idx = exp.local_exp[1][feature][0]
+    bin = find_bin(explainer.discretizer.names[feature_idx], exp.as_list()[feature][0])
+    pred = exp.predict_proba[1]
+    #non_foul = np.delete(explainer.categorical_names[odor_idx], foul_idx)
+    normalized_frequencies = explainer.feature_frequencies[feature_idx].copy()
+    if len(normalized_frequencies) > 3:
+        normalized_frequencies[bin] = 0
+        normalized_frequencies /= normalized_frequencies.sum()
+    elif len(normalized_frequencies) > 1:
+        if bin == len(normalized_frequencies):
+            bin -= 1 # if the rule is X > Y when fewer than four bins, then it always correspond to the last of the bins.
+        normalized_frequencies[bin] = 0
+        normalized_frequencies /= normalized_frequencies.sum()
+
+    average_pone=0
+    weight = exp.local_exp[1][feature][1]
+    for j in range(len(normalized_frequencies)):
+        instance[feature_idx]=explainer.discretizer.means[feature_idx][j]
+        p_one = model.predict_proba(instance.reshape(1, -1))[0,1]
+        average_pone += p_one * normalized_frequencies[j]
+    #     print('P(one | x=%f): %.2f' % (explainer.discretizer.means[feature_idx][j], p_one))
+    # print ('P(one) = %.2f' % average_pone)
+    
+    # print ('Err: Pred - avgPreds - weight = %.2f - %.2f - %.2f = %.2f' % (pred, average_pone, weight, pred - average_pone - weight))
+    return 1 - (pred - average_pone - weight), {'p_one':average_pone, 'weight':weight, 'pw':average_pone + weight}
+
+def debug_print(message, debug=True):
+    if debug:
+        print(message)
