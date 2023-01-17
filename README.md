@@ -1,2 +1,2 @@
 # amai-calibrating-explanations-2023
-Code for paper submitteed to AMAI.
+Code for revised paper submitted to AMAI 18-01-2023.
