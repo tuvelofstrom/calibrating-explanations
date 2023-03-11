@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 from sklearn.calibration import CalibratedClassifierCV
 import time
 
-outerloop = 1 # number of repetitions
+outerloop = 10 # number of repetitions
 k=10 # number of folds
 number_of_bins = 10
 plot_to_file = True
@@ -22,14 +22,14 @@ result_metrics = ['proba','preds',]
 
 descriptors = ['uncal','platt','va',] 
 Descriptors = {'uncal':'Uncal','platt': 'Platt','va': 'VA'}
-models = ['xGB','RF',] 
+models = ['RF','xGB',] 
 
 
 datasets = {1:"pc1req",2:"haberman",3:"hepati",4:"transfusion",5:"spect",6:"heartS",7:"heartH",8:"heartC",9:"je4243",10:"vote",11:"kc2",12:"wbc",
             13:"kc3",14:"creditA",15:"diabetes",16:"iono",17:"kc1",18:"je4042",19:"sonar", 20:"spectf",21:"german",22:"ttt",23:"colic",24:"pc4",25:"liver",}
 
 tic_all = time.time()
-for dataset in datasets.keys():
+for dataset in [22,24]:
     dataSet = datasets[dataset]
 
     tic_data = time.time()
@@ -45,8 +45,8 @@ for dataset in datasets.keys():
 
     r1 = RandomForestClassifier(n_estimators=100)
     r2 = RandomForestClassifier(n_estimators=100)
-    g1 = xgb.XGBClassifier(objective='binary:logistic')
-    g2 = xgb.XGBClassifier(objective='binary:logistic')
+    g1 = xgb.XGBClassifier(objective='binary:logistic',use_label_encoder=False)
+    g2 = xgb.XGBClassifier(objective='binary:logistic',use_label_encoder=False)
     
     model_dict = {'xGB':(g1,g2,"xGB",Xn),'RF':(r1,r2,"RF",Xn)}
     model_struct = [model_dict[model] for model in models]
@@ -101,8 +101,6 @@ for dataset in datasets.keys():
                 for metric in result_metrics:
                     results[desc][metric]=np.append(results[desc][metric], local[desc][metric],axis=0)
 
-            for metric in ['low','high']:
-                results[metric]=np.append(results[metric],local[metric])
             results['yall']=np.append(results['yall'],y)        
         
         bool_to_int = [0,1]
@@ -112,12 +110,11 @@ for dataset in datasets.keys():
             results[desc]['correct'] = np.asarray(results[desc]['preds'] == results['yall']).astype(int)
             results[desc]['diff'] = np.mean(results[desc]['proba_predicted'])-accuracy_score(results['yall'], results[desc]['preds'])
             results[desc]['fop'], results[desc]['mpv'] = calibration_curve(results['yall'], results[desc]['prob1'], n_bins=number_of_bins)
-            results[desc]['mean_abs'] = np.mean(np.abs(results[desc]['lal']),axis=0)
             
         debug_print(dataSet + "-" + alg + ': klar')
 
         if plot_to_file: 
-            plt.figure(figsize=(10, 10))
+            plt.figure(figsize=(9, 9))
             ax1 = plt.subplot2grid((3, 1), (0, 0), rowspan=2)
             ax2 = plt.subplot2grid((3, 1), (2, 0))
             ax1.plot([0, 1], [0, 1], "k:", label="Perfectly calibrated")
@@ -141,15 +138,15 @@ for dataset in datasets.keys():
             if min_x > 0.45:
                     min_x = 0.45
 
-            ax1.set_ylabel("Fraction of positives")
+            ax1.set_ylabel("Fraction of positives", fontsize=12)
             ax1.set_ylim([-0.05, 1.05])
             ax1.set_xlim([-0.022, 1.022])
             ax1.legend(loc="lower right")
             ax1.set_title(dataSet+' '+alg)
 
-            ax2.set_xlabel("Mean predicted value")
-            ax2.set_ylabel("Count")
-            ax2.legend(loc="upper left", ncol=1)
+            ax2.set_xlabel("Mean predicted value", fontsize=12)
+            ax2.set_ylabel("Count", fontsize=12)
+            # ax2.legend(loc="upper left", ncol=1)
 
             plt.tight_layout()
             plt.savefig('plots/' + dataSet + '_' + alg +'.png')
